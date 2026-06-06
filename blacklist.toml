@@ -1,0 +1,18 @@
+# CinderBatt Blacklist
+# Add any .exe name you want killed when restriction mode is active
+# Lines starting with # are comments
+
+[blacklist]
+apps = [
+    "steam.exe",
+    "steamwebhelper.exe",
+    "discord.exe",
+    "wallpaper32.exe",
+    "wallpaper64.exe",
+    "EpicGamesLauncher.exe",
+    "GalaxyClient.exe",
+    "upc.exe",
+    "origin.exe",
+    "NVDisplay.Container.exe",
+    "SpotifyWebHelper.exe",
+]
