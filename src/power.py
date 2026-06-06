@@ -1,50 +1,81 @@
 import ctypes
-import threading
-import time
+from PyQt6.QtCore import QThread, pyqtSignal
 
-POWER_CHECK_INTERVAL = 5  # seconds
+POWER_CHECK_INTERVAL = 5000  # milliseconds
 
-class PowerMonitor:
-    def __init__(self, on_unplug=None, on_plug=None):
-        self.on_unplug = on_unplug
-        self.on_plug   = on_plug
-        self._last_state = self._is_charging()
-        self._running = False
-        self._thread  = None
+class SYSTEM_POWER_STATUS(ctypes.Structure):
+    _fields_ = [
+        ("ACLineStatus",        ctypes.c_byte),
+        ("BatteryFlag",         ctypes.c_byte),
+        ("BatteryLifePercent",  ctypes.c_byte),
+        ("SystemStatusFlag",    ctypes.c_byte),
+        ("BatteryLifeTime",     ctypes.c_ulong),
+        ("BatteryFullLifeTime", ctypes.c_ulong),
+    ]
 
-    def _is_charging(self):
-        class SYSTEM_POWER_STATUS(ctypes.Structure):
-            _fields_ = [
-                ("ACLineStatus",        ctypes.c_byte),
-                ("BatteryFlag",         ctypes.c_byte),
-                ("BatteryLifePercent",  ctypes.c_byte),
-                ("SystemStatusFlag",    ctypes.c_byte),
-                ("BatteryLifeTime",     ctypes.c_ulong),
-                ("BatteryFullLifeTime", ctypes.c_ulong),
-            ]
+# define return type and args once at module level
+_get_power_status = ctypes.windll.kernel32.GetSystemPowerStatus
+if _get_power_status:
+    _get_power_status.restype  = ctypes.c_bool
+    _get_power_status.argtypes = [ctypes.POINTER(SYSTEM_POWER_STATUS)]
 
-        status = SYSTEM_POWER_STATUS()
-        ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status))
-        return status.ACLineStatus == 1  # 1 = plugged in
 
-    def _loop(self):
-        while self._running:
-            current = self._is_charging()
-            if current != self._last_state:
-                if not current and self.on_unplug:
-                    self.on_unplug()
-                elif current and self.on_plug:
-                    self.on_plug()
-                self._last_state = current
-            time.sleep(POWER_CHECK_INTERVAL)
+class PowerMonitor(QThread):
+    plugged   = pyqtSignal()
+    unplugged = pyqtSignal()
 
-    def start(self):
+    def __init__(self):
+        super().__init__()
+        self._running    = False
+        self._last_state = None
+
+    def _is_charging(self) -> bool | None:
+        try:
+            status  = SYSTEM_POWER_STATUS()
+            success = _get_power_status(ctypes.byref(status)) 
+            if not success:
+                print("[power] warning: GetSystemPowerStatus returned False")
+                return None
+            if status.ACLineStatus == 255: 
+                print("[power] warning: ACLineStatus is unknown (255)")
+                return None
+            return status.ACLineStatus == 1
+        except Exception as e:
+            print(f"[power] error: {e}")
+            return None
+
+    def run(self):
         self._running = True
-        self._thread  = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
+
+        self._last_state = self._is_charging()
+
+        while self._running:
+            for _ in range(10):
+                if not self._running:
+                    break
+                self.msleep(POWER_CHECK_INTERVAL // 10)
+
+            if not self._running:
+                break
+
+            current = self._is_charging()
+
+            if current is None:
+                continue
+
+            if self._last_state is None:
+                self._last_state = current
+                continue
+
+            if current != self._last_state:
+                if not current:
+                    self.unplugged.emit()
+                else:
+                    self.plugged.emit()
+                self._last_state = current
 
     def stop(self):
         self._running = False
 
-    def is_charging(self):
+    def is_charging(self) -> bool | None:
         return self._is_charging()
