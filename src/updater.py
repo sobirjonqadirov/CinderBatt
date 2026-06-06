@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QMessageBox, QApplication
 from PyQt6.QtGui import QIcon
 from config import VERSION, SERVER_PATH, ICON_NORMAL
 
-def check_for_updates(app: QApplication) -> tuple[bool, str, bool]:
+def check_for_updates(app: QApplication) -> tuple[bool, str, bool, str]:
     try:
         if not os.path.exists(SERVER_PATH):
             return False, "", False

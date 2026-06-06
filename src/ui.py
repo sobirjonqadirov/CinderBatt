@@ -1,10 +1,10 @@
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
-    QHBoxLayout, QLabel, QPushButton, QFrame, QSystemTrayIcon, QMenu
+    QHBoxLayout, QLabel, QPushButton, QFrame, QSystemTrayIcon, QMenu, QCheckBox
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QIcon, QColor, QPalette, QAction
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QIcon, QAction
 from config import (
     APP_NAME, VERSION,
     ICON_TRAY, ICON_NORMAL, ICON_INVERSE
@@ -37,12 +37,117 @@ class TrayIcon(QSystemTrayIcon):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.dashboard.show_and_raise()
 
+class RestorePopup(QWidget):
+    def __init__(self, snapshot: list, parent=None):
+        super().__init__(parent)
+        self.snapshot = snapshot
+        self.setWindowTitle("Restore Apps")
+        self.setWindowIcon(QIcon(ICON_NORMAL))
+        self.setMinimumSize(340, 250)
+        self.adjustSize()
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1a1a1f;
+                color: #c8c8d8;
+            }
+            QLabel#title {
+                font-size: 14px;
+                font-weight: 500;
+                color: #e8e8f0;
+            }
+            QCheckBox {
+                font-size: 12px;
+                color: #c8c8d8;
+                padding: 4px 0;
+            }
+            QCheckBox::indicator {
+                width: 14px;
+                height: 14px;
+                border: 1px solid #3a3a48;
+                border-radius: 3px;
+                background: #2a2a35;
+            }
+            QCheckBox::indicator:checked {
+                background: #ff6b35;
+                border-color: #ff6b35;
+            }
+            QPushButton {
+                background-color: #2a2a35;
+                color: #c8c8d8;
+                border: 1px solid #3a3a48;
+                border-radius: 6px;
+                padding: 7px 14px;
+                font-size: 12px;
+            }
+            QPushButton:hover { background-color: #32323f; }
+            QPushButton#restore-btn {
+                background-color: #ff6b35;
+                color: #fff;
+                border: none;
+            }
+            QPushButton#restore-btn:hover { background-color: #e55a25; }
+        """)
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(12)
+
+        title = QLabel("Restore closed apps?")
+        title.setObjectName("title")
+        layout.addWidget(title)
+
+        sub = QLabel("These apps were closed when you unplugged.")
+        sub.setObjectName("version")
+        sub.setStyleSheet("font-size: 11px; color: #555;")
+        sub.setWordWrap(True)
+        layout.addWidget(sub)
+
+        self.checkboxes = []
+        self.entries    = []
+        for entry in self.snapshot:
+            cb = QCheckBox(entry["name"])
+            cb.setChecked(True)
+            self.checkboxes.append(cb)
+            self.entries.append(entry)
+            layout.addWidget(cb)
+
+        layout.addStretch()
+
+        btn_row = QHBoxLayout()
+        restore_btn = QPushButton("Restore Selected")
+        restore_btn.setObjectName("restore-btn")
+        restore_btn.clicked.connect(self._restore_selected)
+        dismiss_btn = QPushButton("Dismiss")
+        dismiss_btn.clicked.connect(self._dismiss)
+        btn_row.addWidget(restore_btn)
+        btn_row.addWidget(dismiss_btn)
+        layout.addLayout(btn_row)
+
+    def _restore_selected(self):
+        from rules import BlacklistRule
+        selected = [
+            entry for cb, entry in zip(self.checkboxes, self.entries)
+            if cb.isChecked()
+        ]
+        BlacklistRule.restore_apps(selected)
+        BlacklistRule.clear_restore_snapshot()
+        self.close()
+
+    def _dismiss(self):
+        from rules import BlacklistRule
+        BlacklistRule.clear_restore_snapshot()
+        self.close()
+
 class Dashboard(QMainWindow):
     def __init__(self, power_monitor):
         super().__init__()
         self.power_monitor  = power_monitor
         self.restricted     = False
-        self.update_info    = None  # set externally if update found
+        self.update_info    = None
+        from rule_engine import RuleEngine
+        self.engine = RuleEngine()
 
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(QIcon(ICON_NORMAL))
@@ -55,6 +160,10 @@ class Dashboard(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self._refresh_status)
         self.timer.start(5000)
+
+        self.enforce_timer = QTimer()
+        self.enforce_timer.timeout.connect(self._enforce_rules)
+        self.enforce_timer.setInterval(3000)
 
     def _apply_theme(self):
         self.setStyleSheet("""
@@ -229,20 +338,21 @@ class Dashboard(QMainWindow):
         layout.addWidget(rules_label)
 
         # --- rule: kill process ---
-        rule_frame = QFrame()
-        rule_frame.setObjectName("status-card")
-        rule_layout = QHBoxLayout(rule_frame)
-        rule_layout.setContentsMargins(16, 12, 16, 12)
-        rule_name = QLabel("Kill process on unplug")
-        rule_name.setObjectName("status-val")
-        rule_sub  = QLabel("Closes steam.exe when unplugged")
-        rule_sub.setObjectName("status-key")
-        rule_text = QVBoxLayout()
-        rule_text.addWidget(rule_name)
-        rule_text.addWidget(rule_sub)
-        rule_layout.addLayout(rule_text)
-        rule_layout.addStretch()
-        layout.addWidget(rule_frame)
+        for rule in self.engine.get_rules():
+            rule_frame = QFrame()
+            rule_frame.setObjectName("status-card")
+            rule_layout = QHBoxLayout(rule_frame)
+            rule_layout.setContentsMargins(16, 12, 16, 12)
+            rule_name = QLabel(rule.name)
+            rule_name.setObjectName("status-val")
+            rule_sub  = QLabel(rule.description)
+            rule_sub.setObjectName("status-key")
+            rule_text = QVBoxLayout()
+            rule_text.addWidget(rule_name)
+            rule_text.addWidget(rule_sub)
+            rule_layout.addLayout(rule_text)
+            rule_layout.addStretch()
+            layout.addWidget(rule_frame)
 
         layout.addStretch()
 
@@ -265,35 +375,49 @@ class Dashboard(QMainWindow):
             apply_update(self.update_info[0])
 
     def _toggle_restriction(self):
-        self.restricted = not self.restricted
-        self._refresh_status()
-
         if self.restricted:
-            self._apply_restrictions()
-        else:
             self._remove_restrictions()
-
+        else:
+            self._apply_restrictions()
+    
     def _apply_restrictions(self):
-        self.restricted = True       
-        self._refresh_status()       
-        import psutil
-        for proc in psutil.process_iter(["name"]):
-            if proc.info["name"] and \
-            proc.info["name"].lower() == "steam.exe":
-                proc.kill()
-                print("[rules] killed steam.exe")
+        self.restricted = True
+        self._refresh_status()
+        self.engine.apply_all()
+        self.enforce_timer.start()
 
     def _remove_restrictions(self):
-        self.restricted = False      
-        self._refresh_status()       
+        self.restricted = False
+        self.enforce_timer.stop()
+        self.engine.revert_all()
+        self._refresh_status()
+        self._show_restore_popup()
+
+    def _enforce_rules(self):
+        if not self.restricted:
+            return
+        self.engine.enforce_all()
+
+    def _show_restore_popup(self):
+        from rules import BlacklistRule
+        snapshot = BlacklistRule.load_restore_snapshot()
+        if not snapshot:
+            return
+        self.restore_popup = RestorePopup(snapshot, parent=None)
+        self.restore_popup.show()    
 
     def _refresh_status(self):
         charging = self.power_monitor.is_charging()
 
-        self.power_val.setText("Charging" if charging else "On Battery")
-        self.power_val.setStyleSheet(
-            "color: #4caf6e;" if charging else "color: #e07b39;"
-        )
+        if charging is None:
+            self.power_val.setText("Unknown")
+            self.power_val.setStyleSheet("color: #666;")
+        elif charging:
+            self.power_val.setText("Charging")
+            self.power_val.setStyleSheet("color: #4caf6e;")
+        else:
+            self.power_val.setText("On Battery")
+            self.power_val.setStyleSheet("color: #e07b39;")
 
         if self.restricted:
             self.mode_val.setText("Restricted")
