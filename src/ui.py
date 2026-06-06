@@ -274,15 +274,18 @@ class Dashboard(QMainWindow):
             self._remove_restrictions()
 
     def _apply_restrictions(self):
+        self.restricted = True       
+        self._refresh_status()       
         import psutil
         for proc in psutil.process_iter(["name"]):
             if proc.info["name"] and \
-               proc.info["name"].lower() == "steam.exe":
+            proc.info["name"].lower() == "steam.exe":
                 proc.kill()
                 print("[rules] killed steam.exe")
 
     def _remove_restrictions(self):
-        pass  # nothing to restore for kill rule
+        self.restricted = False      
+        self._refresh_status()       
 
     def _refresh_status(self):
         charging = self.power_monitor.is_charging()

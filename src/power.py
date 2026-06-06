@@ -1,7 +1,7 @@
 import ctypes
 from PyQt6.QtCore import QThread, pyqtSignal
 
-POWER_CHECK_INTERVAL = 5000  # milliseconds
+POWER_CHECK_INTERVAL = 2000  # milliseconds
 
 class SYSTEM_POWER_STATUS(ctypes.Structure):
     _fields_ = [
@@ -45,34 +45,28 @@ class PowerMonitor(QThread):
             return None
 
     def run(self):
-        self._running = True
-
+        self._running    = True
         self._last_state = self._is_charging()
 
         while self._running:
-            for _ in range(10):
-                if not self._running:
-                    break
-                self.msleep(POWER_CHECK_INTERVAL // 10)
-
-            if not self._running:
-                break
-
             current = self._is_charging()
 
             if current is None:
-                continue
-
-            if self._last_state is None:
+                pass
+            elif self._last_state is None:
                 self._last_state = current
-                continue
-
-            if current != self._last_state:
+            elif current != self._last_state:
                 if not current:
                     self.unplugged.emit()
                 else:
                     self.plugged.emit()
                 self._last_state = current
+
+            # sleep after check, not before
+            for _ in range(4):
+                if not self._running:
+                    break
+                self.msleep(500)
 
     def stop(self):
         self._running = False
