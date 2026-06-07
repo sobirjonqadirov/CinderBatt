@@ -7,7 +7,7 @@ from config import VERSION, SERVER_PATH, ICON_NORMAL
 def check_for_updates(app: QApplication) -> tuple[bool, str, bool, str]:
     try:
         if not os.path.exists(SERVER_PATH):
-            return False, "", False
+            return False, "", False, ""
 
         with open(SERVER_PATH, "r") as f:
             data = json.load(f)

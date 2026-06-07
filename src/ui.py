@@ -1,7 +1,8 @@
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
-    QHBoxLayout, QLabel, QPushButton, QFrame, QSystemTrayIcon, QMenu, QCheckBox
+    QHBoxLayout, QLabel, QPushButton, QFrame,
+    QSystemTrayIcon, QMenu, QCheckBox
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon, QAction
@@ -44,7 +45,6 @@ class RestorePopup(QWidget):
         self.setWindowTitle("Restore Apps")
         self.setWindowIcon(QIcon(ICON_NORMAL))
         self.setMinimumSize(340, 250)
-        self.adjustSize()
         self.setStyleSheet("""
             QWidget {
                 background-color: #1a1a1f;
@@ -88,6 +88,7 @@ class RestorePopup(QWidget):
             QPushButton#restore-btn:hover { background-color: #e55a25; }
         """)
         self._build_ui()
+        self.adjustSize()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -99,7 +100,6 @@ class RestorePopup(QWidget):
         layout.addWidget(title)
 
         sub = QLabel("These apps were closed when you unplugged.")
-        sub.setObjectName("version")
         sub.setStyleSheet("font-size: 11px; color: #555;")
         sub.setWordWrap(True)
         layout.addWidget(sub)
@@ -128,7 +128,8 @@ class RestorePopup(QWidget):
     def _restore_selected(self):
         from rules import BlacklistRule
         selected = [
-            entry for cb, entry in zip(self.checkboxes, self.entries)
+            entry for cb, entry
+            in zip(self.checkboxes, self.entries)
             if cb.isChecked()
         ]
         BlacklistRule.restore_apps(selected)
@@ -143,9 +144,9 @@ class RestorePopup(QWidget):
 class Dashboard(QMainWindow):
     def __init__(self, power_monitor):
         super().__init__()
-        self.power_monitor  = power_monitor
-        self.restricted     = False
-        self.update_info    = None
+        self.power_monitor = power_monitor
+        self.restricted    = False
+        self.update_info   = None
         from rule_engine import RuleEngine
         self.engine = RuleEngine()
 
@@ -332,24 +333,23 @@ class Dashboard(QMainWindow):
 
         layout.addWidget(status_card)
 
-        # --- section label ---
+        # --- rules section (dynamic) ---
         rules_label = QLabel("RULES")
         rules_label.setObjectName("section")
         layout.addWidget(rules_label)
 
-        # --- rule: kill process ---
         for rule in self.engine.get_rules():
             rule_frame = QFrame()
             rule_frame.setObjectName("status-card")
             rule_layout = QHBoxLayout(rule_frame)
             rule_layout.setContentsMargins(16, 12, 16, 12)
-            rule_name = QLabel(rule.name)
-            rule_name.setObjectName("status-val")
-            rule_sub  = QLabel(rule.description)
-            rule_sub.setObjectName("status-key")
+            rule_name_lbl = QLabel(rule.name)
+            rule_name_lbl.setObjectName("status-val")
+            rule_desc_lbl = QLabel(rule.description)
+            rule_desc_lbl.setObjectName("status-key")
             rule_text = QVBoxLayout()
-            rule_text.addWidget(rule_name)
-            rule_text.addWidget(rule_sub)
+            rule_text.addWidget(rule_name_lbl)
+            rule_text.addWidget(rule_desc_lbl)
             rule_layout.addLayout(rule_text)
             rule_layout.addStretch()
             layout.addWidget(rule_frame)
@@ -379,7 +379,7 @@ class Dashboard(QMainWindow):
             self._remove_restrictions()
         else:
             self._apply_restrictions()
-    
+
     def _apply_restrictions(self):
         self.restricted = True
         self._refresh_status()
@@ -404,11 +404,12 @@ class Dashboard(QMainWindow):
         if not snapshot:
             return
         self.restore_popup = RestorePopup(snapshot, parent=None)
-        self.restore_popup.show()    
+        self.restore_popup.show()
 
     def _refresh_status(self):
         charging = self.power_monitor.is_charging()
 
+        # handle None (API read failure)
         if charging is None:
             self.power_val.setText("Unknown")
             self.power_val.setStyleSheet("color: #666;")
