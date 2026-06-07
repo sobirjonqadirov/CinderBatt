@@ -25,26 +25,28 @@ class BlacklistRule(BaseRule):
         self._blacklist = load_blacklist()
 
     def apply(self):
-        killed = []
+        killed = {}  # path → entry, deduplicates by exe path
+
         for proc in psutil.process_iter(["name", "exe"]):
             try:
                 proc_name = proc.info["name"]
-                if not proc_name:
+                exe_path  = proc.info["exe"]
+                if not proc_name or not exe_path:
                     continue
                 if proc_name.lower() in self._blacklist:
-                    exe_path = proc.info["exe"]  # grab path before killing
                     proc.kill()
-                    killed.append({
-                        "name":      proc_name,
-                        "path":      exe_path,
-                        "timestamp": datetime.now().isoformat()
-                    })
                     print(f"[blacklist] killed {proc_name}")
+                    if exe_path not in killed:       # only store first instance
+                        killed[exe_path] = {
+                            "name":      proc_name,
+                            "path":      exe_path,
+                            "timestamp": datetime.now().isoformat()
+                        }
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
         if killed:
-            self._save_restore_snapshot(killed)
+            self._save_restore_snapshot(list(killed.values()))
 
     def enforce(self):
         for proc in psutil.process_iter(["name"]):
