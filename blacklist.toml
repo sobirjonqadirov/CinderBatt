@@ -1,6 +1,5 @@
 # CinderBatt Blacklist
 # Add any .exe name you want killed when restriction mode is active
-# Lines starting with # are comments
 
 [blacklist]
 apps = [
@@ -13,6 +12,9 @@ apps = [
     "GalaxyClient.exe",
     "upc.exe",
     "origin.exe",
-    "NVDisplay.Container.exe",
     "SpotifyWebHelper.exe",
 ]
+
+[options]
+# Set to true to also kill child processes (e.g. games launched by Steam)
+kill_process_tree = true
