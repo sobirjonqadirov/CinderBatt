@@ -35,6 +35,7 @@ class BlacklistRule(BaseRule):
 
     def __init__(self):
         self._blacklist, self._kill_tree = load_blacklist()
+        print(f"[blacklist] loaded {len(self._blacklist)} entries: {self._blacklist}")
 
     def apply(self):
         killed = {}
