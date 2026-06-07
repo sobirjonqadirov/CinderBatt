@@ -1,3 +1,7 @@
+# CinderBatt - A lightweight Windows battery management app
+# Copyright (C) 2026 Sobirjon Qadirov
+# Licensed under GNU GPL v3 — see LICENSE for details
+
 import json
 import requests
 import tempfile
