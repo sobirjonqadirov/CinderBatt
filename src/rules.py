@@ -6,6 +6,18 @@ from datetime import datetime
 from blacklist import load_blacklist
 from config import BASE_DIR, RESTORE_PATH
 
+def kill_process_tree(proc: psutil.Process):
+        try:
+            children = proc.children(recursive=True)  # get all descendants
+            for child in children:
+                try:
+                    child.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            proc.kill()  # kill parent last
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
 class BaseRule:
     name        : str = ""
     description : str = ""
@@ -22,26 +34,30 @@ class BlacklistRule(BaseRule):
     enabled     = True
 
     def __init__(self):
-        self._blacklist = load_blacklist()
+        self._blacklist, self._kill_tree = load_blacklist()
 
     def apply(self):
-        killed = {}  # path → entry, deduplicates by exe path
+        killed = {}
 
-        for proc in psutil.process_iter(["name", "exe"]):
+        for proc in psutil.process_iter(["name", "exe", "pid"]):
             try:
                 proc_name = proc.info["name"]
                 exe_path  = proc.info["exe"]
                 if not proc_name or not exe_path:
                     continue
                 if proc_name.lower() in self._blacklist:
-                    proc.kill()
-                    print(f"[blacklist] killed {proc_name}")
-                    if exe_path not in killed:       # only store first instance
+                    # snapshot before killing
+                    if exe_path not in killed:
                         killed[exe_path] = {
                             "name":      proc_name,
                             "path":      exe_path,
                             "timestamp": datetime.now().isoformat()
                         }
+                    if self._kill_tree:
+                        kill_process_tree(proc)
+                    else:
+                        proc.kill()
+                    print(f"[blacklist] killed: {proc_name}")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
 
@@ -54,7 +70,10 @@ class BlacklistRule(BaseRule):
                 if not proc.info["name"]:
                     continue
                 if proc.info["name"].lower() in self._blacklist:
-                    proc.kill()
+                    if self._kill_tree:
+                        kill_process_tree(proc)
+                    else:
+                        proc.kill()
                     print(f"[blacklist] enforced: killed {proc.info['name']}")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
