@@ -1,16 +1,18 @@
 import json
-import os
+import requests
+import tempfile
+import subprocess
+import sys
 from PyQt6.QtWidgets import QMessageBox, QApplication
 from PyQt6.QtGui import QIcon
-from config import VERSION, SERVER_PATH, ICON_NORMAL
+from config import VERSION, UPDATE_SERVER_URL, ICON_NORMAL
+
 
 def check_for_updates(app: QApplication) -> tuple[bool, str, bool, str]:
     try:
-        if not os.path.exists(SERVER_PATH):
-            return False, "", False, ""
-
-        with open(SERVER_PATH, "r") as f:
-            data = json.load(f)
+        response = requests.get(UPDATE_SERVER_URL, timeout=5)
+        response.raise_for_status()
+        data = response.json()
 
         latest       = data.get("latest", "")
         url          = data.get("url", "")
@@ -22,6 +24,12 @@ def check_for_updates(app: QApplication) -> tuple[bool, str, bool, str]:
 
         return False, "", False, ""
 
+    except requests.exceptions.ConnectionError:
+        print("[updater] no internet connection, skipping update check")
+        return False, "", False, ""
+    except requests.exceptions.Timeout:
+        print("[updater] update check timed out")
+        return False, "", False, ""
     except Exception as e:
         print(f"[updater] failed to check: {e}")
         return False, "", False, ""
@@ -56,11 +64,18 @@ def prompt_update(latest_url: str, experimental: bool, exp_note: str) -> bool:
 
 def apply_update(url: str):
     try:
-        if os.path.exists(url):
-            import subprocess, sys
-            subprocess.Popen([url])
-            sys.exit()
-        else:
-            print(f"[updater] release not found at: {url}")
+        print(f"[updater] downloading from {url}")
+        response = requests.get(url, stream=True, timeout=30)
+        response.raise_for_status()
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".exe") as tmp:
+            for chunk in response.iter_content(chunk_size=8192):
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        print(f"[updater] launching {tmp_path}")
+        subprocess.Popen([tmp_path])
+        sys.exit()
+
     except Exception as e:
-        print(f"[updater] failed to apply update: {e}")
+        print(f"[updater] update failed: {e}")

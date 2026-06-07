@@ -1,6 +1,6 @@
 {
     "latest": "alpha-1.0",
-    "url": "server/releases/alpha-1.0.exe",
+    "url": "https://github.com/sobirjonqadirov/CinderBatt/releases/download/alpha-1.0/CinderBatt-alpha-1.0-setup.exe",
     "experimental": false,
     "experimental_note": ""
 }
